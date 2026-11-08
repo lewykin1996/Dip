@@ -1,0 +1,28 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build folders
+**/Debug/
+**/Release/
+**/x64/
+**/x86/
+[Bb]in/
+[Oo]bj/
+
+# Compiled files
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.idb
+*.log
+*.tlog/
+*.recipe
+
+# Local configuration
+Config.ini
