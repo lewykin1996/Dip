@@ -435,24 +435,6 @@ int main()
         // Создание объекта индексатора
         Indexer indexer;
 
-        // Создание таблиц при первом запуске
-        std::cout << "\nChecking database tables..."
-            << std::endl;
-
-        indexer.createTables(connection);
-
-        // Индексация файлов
-        std::cout << "\nStarting directory indexing..."
-            << std::endl;
-
-        indexer.indexDirectory(
-            directory,
-            extensions,
-            connection
-        );
-
-        std::cout << "\nDirectory indexing completed!"
-            << std::endl;
 
         // Поиск документов
         std::cout << "\n========== DOCUMENT SEARCH =========="
