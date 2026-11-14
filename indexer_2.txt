@@ -1,0 +1,241 @@
+#include "Indexer.h"
+
+#include <sstream>
+#include <fstream>
+#include <iostream>
+#include <filesystem>
+#include <windows.h>
+
+// Преобразование UTF-8 в UTF-16
+std::wstring utf8ToWide(const std::string& text)
+{
+    if (text.empty())
+        return L"";
+
+    int size = MultiByteToWideChar(
+        CP_UTF8, 0, text.c_str(), -1, nullptr, 0
+    );
+
+    if (size == 0)
+        return L"";
+
+    std::wstring result(size - 1, L'\0');
+
+    MultiByteToWideChar(
+        CP_UTF8, 0, text.c_str(), -1, result.data(), size
+    );
+
+    return result;
+}
+
+// Преобразование UTF-16 в UTF-8
+std::string wideToUtf8(const std::wstring& text)
+{
+    if (text.empty())
+        return "";
+
+    int size = WideCharToMultiByte(
+        CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr
+    );
+
+    if (size == 0)
+        return "";
+
+    std::string result(size - 1, '\0');
+
+    WideCharToMultiByte(
+        CP_UTF8, 0, text.c_str(), -1, result.data(), size,
+        nullptr, nullptr
+    );
+
+    return result;
+}
+
+// Приведение слова к нижнему регистру
+std::wstring toLowerCase(const std::wstring& word)
+{
+    if (word.empty())
+        return L"";
+
+    int size = LCMapStringEx(
+        LOCALE_NAME_USER_DEFAULT,
+        LCMAP_LOWERCASE,
+        word.c_str(),
+        static_cast<int>(word.size()),
+        nullptr,
+        0,
+        nullptr,
+        nullptr,
+        0
+    );
+
+    if (size == 0)
+        return word;
+
+    std::wstring result(size, L'\0');
+
+    LCMapStringEx(
+        LOCALE_NAME_USER_DEFAULT,
+        LCMAP_LOWERCASE,
+        word.c_str(),
+        static_cast<int>(word.size()),
+        result.data(),
+        size,
+        nullptr,
+        nullptr,
+        0
+    );
+
+    return result;
+}
+
+// Проверка: является ли символ буквой или цифрой
+bool isLetterOrDigit(wchar_t ch)
+{
+    WORD characterType = 0;
+
+    if (!GetStringTypeW(CT_CTYPE1, &ch, 1, &characterType))
+        return false;
+
+    return (characterType & C1_ALPHA) ||
+        (characterType & C1_DIGIT);
+}
+
+// Подсчёт символов
+size_t countCharacters(const std::wstring& word)
+{
+    size_t count = 0;
+
+    for (size_t i = 0; i < word.size(); ++i)
+    {
+        if (word[i] >= 0xD800 && word[i] <= 0xDBFF &&
+            i + 1 < word.size() &&
+            word[i + 1] >= 0xDC00 && word[i + 1] <= 0xDFFF)
+        {
+            ++i;
+        }
+
+        ++count;
+    }
+
+    return count;
+}
+
+// Конструктор индексатора
+Indexer::Indexer()
+{
+}
+
+// Разделение текста на слова
+std::vector<std::string> Indexer::getWords(const std::string& text)
+{
+    std::vector<std::string> words;
+
+    std::wstring wideText = utf8ToWide(text);
+    std::wstring currentWord;
+
+    for (wchar_t ch : wideText)
+    {
+        if (isLetterOrDigit(ch))
+        {
+            currentWord += ch;
+        }
+        else
+        {
+            if (!currentWord.empty())
+            {
+                size_t length = countCharacters(currentWord);
+
+                if (length >= 3 && length <= 32)
+                {
+                    currentWord = toLowerCase(currentWord);
+                    words.push_back(wideToUtf8(currentWord));
+                }
+
+                currentWord.clear();
+            }
+        }
+    }
+
+    // Обработка последнего слова
+    if (!currentWord.empty())
+    {
+        size_t length = countCharacters(currentWord);
+
+        if (length >= 3 && length <= 32)
+        {
+            currentWord = toLowerCase(currentWord);
+            words.push_back(wideToUtf8(currentWord));
+        }
+    }
+
+    return words;
+}
+
+// Подсчёт частоты каждого слова
+std::map<std::string, int> Indexer::countWords(const std::string& text)
+{
+    std::map<std::string, int> wordCounts;
+
+    std::vector<std::string> words = getWords(text);
+
+    for (const std::string& word : words)
+    {
+        wordCounts[word]++;
+    }
+
+    return wordCounts;
+}
+
+// Чтение содержимого файла
+std::string Indexer::readFile(const std::string& filePath)
+{
+    std::ifstream file(filePath);
+
+    if (!file.is_open())
+    {
+        return "";
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    return buffer.str();
+}
+
+// Рекурсивный обход папки и подсчёт частоты слов
+
+void Indexer::indexDirectory(const std::string& directory)
+{
+    namespace fs = std::filesystem;
+
+    for (const auto& entry : fs::recursive_directory_iterator(directory))
+    {
+        if (entry.is_regular_file() &&
+            entry.path().extension() == ".txt")
+        {
+            std::string filePath = entry.path().string();
+
+            std::string text = readFile(filePath);
+
+            std::map<std::string, int> wordCounts = countWords(text);
+
+            std::cout << "File: " << filePath << std::endl;
+
+            std::cout << "Unique words: "
+                << wordCounts.size() << std::endl;
+
+            std::cout << "Word frequencies:" << std::endl;
+
+            for (const auto& pair : wordCounts)
+            {
+                std::cout << pair.first
+                    << " : "
+                    << pair.second
+                    << std::endl;
+            }
+
+            std::cout << "------------------------" << std::endl;
+        }
+    }
+}

@@ -1,0 +1,121 @@
+#include "Indexer.h"
+
+#include <sstream>
+#include <fstream>
+#include <iostream>
+#include <filesystem>
+#include <algorithm>
+#include <cctype>
+
+// Конструктор индексатора
+Indexer::Indexer()
+{
+}
+
+// Разделение текста на отдельные слова
+std::vector<std::string> Indexer::getWords(const std::string& text)
+{
+    std::vector<std::string> words;
+
+    std::string currentWord;
+
+    for (unsigned char ch : text)
+    {
+        // Английские буквы и цифры
+        if (std::isalnum(ch))
+        {
+            currentWord += static_cast<char>(std::tolower(ch));
+        }
+        // Байты UTF-8 для русских букв
+        else if (ch >= 128)
+        {
+            currentWord += static_cast<char>(ch);
+        }
+        // Разделитель: пробел или знак препинания
+        else
+        {
+            if (!currentWord.empty())
+            {
+                // Длина слова от 3 до 32 символов (байтов пока считаем отдельно)
+                if (currentWord.size() >= 3 && currentWord.size() <= 32)
+                {
+                    words.push_back(currentWord);
+                }
+
+                currentWord.clear();
+            }
+        }
+    }
+
+    // Обработка последнего слова
+    if (!currentWord.empty())
+    {
+        if (currentWord.size() >= 3 && currentWord.size() <= 32)
+        {
+            words.push_back(currentWord);
+        }
+    }
+
+    return words;
+}
+
+// Подсчёт частоты каждого слова
+std::map<std::string, int> Indexer::countWords(const std::string& text)
+{
+    std::map<std::string, int> wordCounts;
+
+    std::vector<std::string> words = getWords(text);
+
+    for (const std::string& word : words)
+    {
+        wordCounts[word]++;
+    }
+
+    return wordCounts;
+}
+
+// Чтение содержимого файла
+std::string Indexer::readFile(const std::string& filePath)
+{
+    std::ifstream file(filePath);
+
+    if (!file.is_open())
+    {
+        return "";
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+
+    return buffer.str();
+}
+
+// Рекурсивный обход папки
+void Indexer::indexDirectory(const std::string& directory)
+{
+    namespace fs = std::filesystem;
+
+    for (const auto& entry : fs::recursive_directory_iterator(directory))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == ".txt")
+        {
+            std::string filePath = entry.path().string();
+
+            std::string text = readFile(filePath);
+
+            std::vector<std::string> words = getWords(text);
+
+            std::cout << "File: " << filePath << std::endl;
+            std::cout << "Words found: " << words.size() << std::endl;
+
+            std::cout << "Processed words:" << std::endl;
+
+            for (const std::string& word : words)
+            {
+                std::cout << word << std::endl;
+            }
+
+            std::cout << "------------------------" << std::endl;
+        }
+    }
+}

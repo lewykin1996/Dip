@@ -1,0 +1,328 @@
+#include <iostream>
+#include <string>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <windows.h>
+#include <clocale>
+#include <stdexcept>
+#include <vector>
+#include <utility>
+
+#include <pqxx/pqxx>
+
+#include "Indexer.h"
+
+// Удаление пробелов в начале и конце строки
+std::string trim(const std::string& value)
+{
+    const std::string whitespace = " \t\r\n";
+
+    size_t first = value.find_first_not_of(whitespace);
+
+    if (first == std::string::npos)
+        return "";
+
+    size_t last = value.find_last_not_of(whitespace);
+
+    return value.substr(first, last - first + 1);
+}
+
+// Чтение настроек из INI-файла
+std::map<std::string, std::string> readConfig(
+    const std::string& filePath)
+{
+    std::map<std::string, std::string> settings;
+
+    std::ifstream file(filePath);
+
+    if (!file.is_open())
+    {
+        throw std::runtime_error(
+            "Cannot open config file: " + filePath
+        );
+    }
+
+    std::string line;
+
+    while (std::getline(file, line))
+    {
+        line = trim(line);
+
+        if (line.empty() || line[0] == ';' || line[0] == '#')
+            continue;
+
+        if (line.front() == '[' && line.back() == ']')
+            continue;
+
+        size_t separator = line.find('=');
+
+        if (separator == std::string::npos)
+            continue;
+
+        std::string key = trim(line.substr(0, separator));
+        std::string value = trim(line.substr(separator + 1));
+
+        settings[key] = value;
+    }
+
+    return settings;
+}
+
+// Получение обязательной настройки
+std::string getSetting(
+    const std::map<std::string, std::string>& settings,
+    const std::string& key)
+{
+    auto it = settings.find(key);
+
+    if (it == settings.end() || it->second.empty())
+    {
+        throw std::runtime_error(
+            "Missing config setting: " + key
+        );
+    }
+
+    return it->second;
+}
+
+// Чтение строки из консоли с поддержкой кириллицы
+std::string readConsoleLine()
+{
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+
+    wchar_t buffer[1024] = {};
+    DWORD charsRead = 0;
+
+    if (!ReadConsoleW(input, buffer, 1024, &charsRead, nullptr))
+    {
+        throw std::runtime_error("Cannot read console input.");
+    }
+
+    std::wstring wideText(buffer, charsRead);
+
+    // Удаляем символы перехода на новую строку
+    while (!wideText.empty() &&
+        (wideText.back() == L'\r' || wideText.back() == L'\n'))
+    {
+        wideText.pop_back();
+    }
+
+    if (wideText.empty())
+        return "";
+
+    // Преобразуем Unicode в UTF-8
+    int size = WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        wideText.c_str(),
+        static_cast<int>(wideText.size()),
+        nullptr,
+        0,
+        nullptr,
+        nullptr
+    );
+
+    if (size == 0)
+    {
+        throw std::runtime_error(
+            "Cannot convert console input to UTF-8."
+        );
+    }
+
+    std::string result(size, '\0');
+
+    WideCharToMultiByte(
+        CP_UTF8,
+        0,
+        wideText.c_str(),
+        static_cast<int>(wideText.size()),
+        result.data(),
+        size,
+        nullptr,
+        nullptr
+    );
+
+    return result;
+}
+
+int main()
+{
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
+    setlocale(LC_ALL, ".UTF-8");
+
+    try
+    {
+        // Читаем конфигурацию
+        std::cout << "Reading config.ini..." << std::endl;
+
+        std::map<std::string, std::string> settings =
+            readConfig("Config.ini");
+
+        std::string host = getSetting(settings, "host");
+        std::string port = getSetting(settings, "port");
+        std::string database = getSetting(settings, "dbname");
+        std::string user = getSetting(settings, "user");
+
+        std::string directory =
+            getSetting(settings, "directory");
+
+        std::string extensions =
+            getSetting(settings, "extensions");
+
+        // Настройки поиска
+        int maxResults = std::stoi(
+            getSetting(settings, "max_results")
+        );
+
+        int maxQueryWords = std::stoi(
+            getSetting(settings, "max_query_words")
+        );
+
+        if (maxQueryWords <= 0)
+            throw std::runtime_error("max_query_words must be positive"
+            );
+
+        if (maxQueryWords > 4)
+            maxQueryWords = 4;
+
+        if (maxResults <= 0)
+            throw std::runtime_error(
+                "max_results must be positive"
+            );
+
+        std::cout << "Config loaded successfully!" << std::endl;
+        std::cout << "Database: " << database << std::endl;
+        std::cout << "Directory: " << directory << std::endl;
+        std::cout << "Extensions: " << extensions << std::endl;
+        std::cout << "Maximum results: " << maxResults << std::endl;
+        std::cout << "Maximum query words: " << maxQueryWords << std::endl;
+
+        // Запрашиваем пароль при запуске
+        std::string password;
+
+        std::cout << "\nEnter PostgreSQL password: ";
+        std::getline(std::cin, password);
+
+        // Формируем строку подключения
+        std::string connectionString =
+            "host=" + host +
+            " port=" + port +
+            " dbname=" + database +
+            " user=" + user +
+            " password=" + password;
+
+        // Подключение к PostgreSQL
+        pqxx::connection connection(connectionString);
+
+        std::cout << "\nConnected to PostgreSQL!" << std::endl;
+
+        // Проверка подключения
+        pqxx::work transaction(connection);
+
+        pqxx::result result = transaction.exec(
+            "SELECT current_database(), current_user;"
+        );
+
+        for (const auto& row : result)
+        {
+            std::cout << "Database: "
+                << row[0].c_str() << std::endl;
+
+            std::cout << "User: "
+                << row[1].c_str() << std::endl;
+        }
+
+        transaction.commit();
+
+        // Создаём объект индексатора
+        Indexer indexer;
+
+        // Запуск индексации
+        std::cout << "\nStarting directory indexing..." << std::endl;
+
+        indexer.indexDirectory(directory, connection);
+
+        std::cout << "\nDirectory indexing completed!" << std::endl;
+
+        // Ввод поискового запроса
+        std::cout << "\n========== DOCUMENT SEARCH ==========" << std::endl;
+
+        std::cout << "Enter search query (maximum "
+            << maxQueryWords << " words): ";
+
+        std::string searchQuery = readConsoleLine();
+
+        // Обработка поискового запроса
+        std::vector<std::string> searchWords =
+            indexer.getWords(searchQuery);
+
+        if (searchWords.empty())
+        {
+            std::cout << "\nSearch query is empty or contains "
+                << "no valid words." << std::endl;
+
+            return 0;
+        }
+
+        // Проверяем количество слов
+        if (searchWords.size() > static_cast<size_t>(maxQueryWords))
+        {
+            std::cout << "\nError: too many words in search query."
+                << std::endl;
+
+            std::cout << "Maximum allowed: "
+                << maxQueryWords << std::endl;
+
+            return 0;
+        }
+
+        // Выполняем поиск
+        std::cout << "\nSearching documents..." << std::endl;
+
+        std::vector<std::pair<std::string, int>> searchResults =
+            indexer.searchDocuments(
+                searchWords,
+                connection,
+                maxResults
+            );
+
+        // Вывод результатов
+        std::cout << "\n========== SEARCH RESULTS ==========" << std::endl;
+
+        if (searchResults.empty())
+        {
+            std::cout << "No documents found." << std::endl;
+        }
+        else
+        {
+            std::cout << "Found documents: "
+                << searchResults.size() << std::endl;
+
+            std::cout << "------------------------------------" << std::endl;
+
+            for (size_t i = 0; i < searchResults.size(); ++i)
+            {
+                std::cout << i + 1 << ". "
+                    << searchResults[i].first << std::endl;
+
+                std::cout << "   Relevance: "
+                    << searchResults[i].second << std::endl;
+
+                std::cout << "------------------------------------" << std::endl;
+            }
+        }
+
+        std::cout << "\nSearch completed!" << std::endl;
+    }
+    catch (const std::exception& e)
+
+
+    {
+        std::cerr << "\nError: " << e.what() << std::endl;
+        return 1;
+    }
+
+    return 0;
+}
