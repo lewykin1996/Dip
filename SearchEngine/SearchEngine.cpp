@@ -435,82 +435,91 @@ int main()
         // Создание объекта индексатора
         Indexer indexer;
 
-
         // Поиск документов
         std::cout << "\n========== DOCUMENT SEARCH =========="
             << std::endl;
 
-        std::cout << "Enter search query (maximum "
-            << maxQueryWords << " words): ";
-
-        std::string searchQuery = readConsoleLine();
-
-        // Обработка поискового запроса
-        std::vector<std::string> searchWords =
-            indexer.getWords(searchQuery);
-
-        if (searchWords.empty())
+        while (true)
         {
-            std::cout << "\nSearch query contains no valid words."
-                << std::endl;
+            std::cout << "\nEnter search query (maximum "
+                << maxQueryWords << " words): ";
 
-            return 0;
-        }
+            std::string searchQuery = readConsoleLine();
 
-        // Проверка количества слов
-        if (searchWords.size() > static_cast<size_t>(maxQueryWords))
-        {
-            std::cout << "\nToo many words in search query."
-                << std::endl;
-
-            std::cout << "Maximum allowed: "
-                << maxQueryWords << std::endl;
-
-            return 0;
-        }
-
-        std::cout << "\nSearching documents..."
-            << std::endl;
-
-        // Выполнение поиска
-        std::vector<std::pair<std::string, int>> results =
-            indexer.searchDocuments(
-                searchWords,
-                connection,
-                maxResults
-            );
-
-        std::cout << "\n========== SEARCH RESULTS =========="
-            << std::endl;
-
-        if (results.empty())
-        {
-            std::cout << "No documents found."
-                << std::endl;
-        }
-        else
-        {
-            std::cout << "Found documents: "
-                << results.size() << std::endl;
-
-            std::cout << "------------------------------------"
-                << std::endl;
-
-            for (size_t i = 0; i < results.size(); ++i)
+            // Пустая строка завершает работу поисковика
+            if (trim(searchQuery).empty())
             {
-                std::cout << i + 1 << ". "
-                    << results[i].first << std::endl;
+                std::cout << "\nSearch finished. Goodbye!"
+                    << std::endl;
+                break;
+            }
 
-                std::cout << "   Relevance: "
-                    << results[i].second << std::endl;
+            // Обработка поискового запроса
+            std::vector<std::string> searchWords =
+                indexer.getWords(searchQuery);
+
+            if (searchWords.empty())
+            {
+                std::cout << "\nSearch query contains no valid words."
+                    << std::endl;
+                continue;
+            }
+
+            // Проверка количества слов
+            if (searchWords.size() > static_cast<size_t>(maxQueryWords))
+            {
+                std::cout << "\nToo many words in search query."
+                    << std::endl;
+
+                std::cout << "Maximum allowed: "
+                    << maxQueryWords << std::endl;
+
+                continue;
+            }
+
+            std::cout << "\nSearching documents..."
+                << std::endl;
+
+            // Выполнение поиска
+            std::vector<std::pair<std::string, int>> results =
+                indexer.searchDocuments(
+                    searchWords,
+                    connection,
+                    maxResults
+                );
+
+            std::cout << "\n========== SEARCH RESULTS =========="
+                << std::endl;
+
+            if (results.empty())
+            {
+                std::cout << "No documents found."
+                    << std::endl;
+            }
+            else
+            {
+                std::cout << "Found documents: "
+                    << results.size() << std::endl;
 
                 std::cout << "------------------------------------"
                     << std::endl;
-            }
-        }
 
-        std::cout << "\nSearch completed!"
-            << std::endl;
+                for (size_t i = 0; i < results.size(); ++i)
+                {
+                    std::cout << i + 1 << ". "
+                        << results[i].first << std::endl;
+
+                    std::cout << "   Relevance: "
+                        << results[i].second << std::endl;
+
+                    std::cout << "------------------------------------"
+                        << std::endl;
+                }
+            }
+
+            std::cout << "\nSearch completed!"
+                << std::endl;
+        }
 
         return 0;
     }
